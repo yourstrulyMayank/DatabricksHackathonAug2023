@@ -1,4 +1,9 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Import New URLs And Store Them In The Bronze Table
+
+# COMMAND ----------
+
 import requests
 import zipfile
 import io
@@ -31,15 +36,15 @@ urls = df[4]
 url_df = spark.createDataFrame(urls.to_frame(name='url'))
 url_df.createOrReplaceTempView("temp_table")
 
-current_max_batch = spark.sql("SELECT MAX(batch) AS max_batch FROM bronze_table").first().max_batch
+current_max_batch = spark.sql("SELECT MAX(batch) AS max_batch FROM infosys.kamikaze_rtsa.bronze_table_raw").first().max_batch
 next_batch = current_max_batch + 1 if current_max_batch is not None else 1
 df_spark_with_sno = url_df.withColumn("SNo", monotonically_increasing_id()+1)
 df_spark_with_sno.withColumn("batch", lit(next_batch)).createOrReplaceTempView("temp")
 
 spark.sql("""
-INSERT INTO bronze_table
+INSERT INTO infosys.kamikaze_rtsa.bronze_table_raw
 SELECT 
-  SNo, batch, CURRENT_TIMESTAMP() AS Timestamp, url
+  SNo, batch, CURRENT_TIMESTAMP() AS Timestamp, url, 0, 0
 FROM temp
 """)
 
@@ -49,43 +54,69 @@ FROM temp
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC --drop table infosys.kamikaze_rtsa.bronze_table_raw
 
+# COMMAND ----------
+
+#%fs rm -r /FileStore/tables/bronze_table
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+# MAGIC %sql 
+# MAGIC /*
+# MAGIC CREATE TABLE infosys.kamikaze_rtsa.bronze_table_raw(
+# MAGIC     SNo BIGINT,
+# MAGIC     batch BIGINT,
+# MAGIC     Timestamp TIMESTAMP,
+# MAGIC     url STRING,
+# MAGIC     processed SMALLINT, --0 implies article is yet to processed; 1 implies processed
+# MAGIC     status  SMALLINT -- 0 is default; 1 is not downloaded ; 2 downloaded
+# MAGIC   )USING DELTA
+# MAGIC */
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC --  drop table bronze_table
+# MAGIC /*
+# MAGIC CREATE EXTERNAL TABLE bronze_table (
+# MAGIC     SNo INT,
+# MAGIC     batch INT,
+# MAGIC     Timestamp TIMESTAMP,
+# MAGIC     url STRING,
+# MAGIC     processed SMALLINT, --0 implies article is yet to processed; 1 implies processed
+# MAGIC     status  SMALLINT -- 0 is default; 1 is not downloaded ; 2 downloaded
+# MAGIC   )USING DELTA
+# MAGIC location '/FileStore/tables/bronze_table';
+# MAGIC */
+# MAGIC
 
 # COMMAND ----------
 
-# %fs rm -r /FileStore/tables/bronze_table
+#spark.sql("OPTIMIZE bronze_table")
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC --  CREATE EXTERNAL TABLE bronze_table (
-# MAGIC --    SNo INT,
-# MAGIC --    batch INT,
-# MAGIC --    Timestamp TIMESTAMP,
-# MAGIC --   url STRING
+# MAGIC
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC /*
+# MAGIC select processed, status, count(1) 
+# MAGIC from infosys.kamikaze_rtsa.bronze_table_raw
+# MAGIC group by processed, status
+# MAGIC */
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select * from infosys.kamikaze_rtsa.silver_table_processed 
+# MAGIC where article_text  == '' and article_title != ''
+# MAGIC --where processed==0 and status==1
 # MAGIC  
-# MAGIC --  )USING DELTA
-# MAGIC --  location '/FileStore/tables/bronze_table';
-
-# COMMAND ----------
-
-spark.sql("OPTIMIZE bronze_table")
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT COUNT(*) FROM bronze_table;
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC select * from bronze_table ;
-
-# COMMAND ----------
-
-
